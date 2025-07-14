@@ -1,18 +1,30 @@
 import gymnasium as gym
 from stable_baselines3 import PPO
 from sycabot_env import SycaBotEnv
+import time
 
-env = SycaBotEnv(render_mode=None)
+# Create environment
+env = SycaBotEnv(render_mode="human")
 
-model = PPO("MlpPolicy", env, verbose=1)
-model.learn(total_timesteps=50000)
+# # Train policy
+# model = PPO("MlpPolicy", env, verbose=1)
+# model.learn(total_timesteps=2e5)
 
-# Visualize
+# # Save model
+# model.save("ppo_sycabot")
+
+# Load model (optional, just to demonstrate saving/loading)
+model = PPO.load("ppo_sycabot")
+
+# Run animation
 obs, _ = env.reset()
+done = False
+
 for _ in range(200):
     action, _ = model.predict(obs)
     obs, _, done, _, _ = env.step(action)
     env.render()
+    time.sleep(env.dt)
     if done:
         obs, _ = env.reset()
 
