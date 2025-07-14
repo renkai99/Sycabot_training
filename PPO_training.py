@@ -7,8 +7,17 @@ import time
 env = SycaBotEnv(render_mode="human")
 
 # # Train policy
-# model = PPO("MlpPolicy", env, verbose=1)
-# model.learn(total_timesteps=2e5)
+# model = PPO(
+#     "MlpPolicy",
+#     env,
+#     verbose=1,
+#     tensorboard_log="./ppo_sycabot_tensorboard/",
+#     device="cuda" if hasattr(env, "device") and env.device == "cuda" else "cpu"
+# )
+
+# model.learn(
+#     total_timesteps=1e6
+# )
 
 # # Save model
 # model.save("ppo_sycabot")

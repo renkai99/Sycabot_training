@@ -21,12 +21,12 @@ class SycaBotEnv(gym.Env):
         self.alpha_r_minus, self.alpha_r_plus = 50.0, 50.0
         self.alpha_l_minus, self.alpha_l_plus = 50.0, 50.0
 
-        # Action space: [u_r, u_l]
+        # Action space: [v, w]
         self.action_space = spaces.Box(low=np.array([-0.6, -np.pi]), 
                                        high=np.array([0.6, np.pi]), dtype=np.float32)
 
-        # # Observation space: [x, y, theta, x_goal, y_goal]
-        obs_high = np.array([4.0, 4.0, np.pi, 4.0, 4.0, np.pi, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0], dtype=np.float32)
+        # # Observation space
+        obs_high = np.array([1.6, 3.5, np.pi, 1.6, 3.5, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=-obs_high, high=obs_high, dtype=np.float32)
 
         # Initial state
@@ -34,9 +34,10 @@ class SycaBotEnv(gym.Env):
         self.state = np.zeros(3)  # [x, y, theta]
 
         # Obstacles and goals
-        self.obstacles = self.add_obstacles()
-        self.goals = self.add_goals()
+        self.obstacles = self._add_obstacles()
+        self.goals = self._add_goals()
         self.step_count = 0
+        self.reward = 0
 
         # Visualization
         self.window = None
@@ -44,7 +45,7 @@ class SycaBotEnv(gym.Env):
         self.screen_size = 700
         self.scale = 100  # 1 m = 100 px
 
-    def add_obstacles(self):
+    def _add_obstacles(self):
         return [
             [[-1.498, 3.001], [0.001, 3.000]],
             [[1.051, 3.001], [1.494, 3.000]],
@@ -70,9 +71,12 @@ class SycaBotEnv(gym.Env):
             [[-0.685, -2.103], [-0.931, -2.414]],
         ]
 
-    def min_distance_to_obstacles(self):
-        min_distance = float('inf')
+    def _min_distance_to_obstacles(self):
+        min_distances = []
+        min_orientations = []
         robot_pos = self.state[:2]
+        robot_theta = self.state[2]
+
         for obstacle in self.obstacles:
             start, end = np.array(obstacle[0]), np.array(obstacle[1])
             obstacle_vec = end - start
@@ -84,19 +88,33 @@ class SycaBotEnv(gym.Env):
                 closest_point = end
             else:
                 closest_point = start + proj_length * obstacle_vec
+            
             distance = np.linalg.norm(robot_pos - closest_point)
-            min_distance = min(min_distance, distance)
-        return min_distance
+            orientation = np.arctan2(closest_point[1] - robot_pos[1], closest_point[0] - robot_pos[0]) - robot_theta
+            min_distances.append(distance)
+            min_orientations.append(orientation)
 
-    def distances_to_goals(self, robot_pos):
-        distances = []
+        # Get indices of the 3 closest obstacles
+        closest_indices = np.argsort(min_distances)[:3]
+        result = []
+        for i in closest_indices:
+            result.append(min_distances[i])
+            result.append(min_orientations[i])
+        return result
+
+    def _distance_to_goals(self, robot_pos):
+        distance = []
+        orientations = []
         for goal in self.goals:
             goal_point = np.array(goal)
-            distance = np.linalg.norm(robot_pos - goal_point)
-            distances.append(distance)
-        return distances
+            dist = np.linalg.norm(robot_pos - goal_point)
+            orient = np.arctan2(goal_point[1] - robot_pos[1], goal_point[0] - robot_pos[0])
+            distance.append(dist)
+            orientations.append(orient)
+        min_idx = np.argmin(distance)
+        return [distance[min_idx], orientations[min_idx]]
 
-    def add_goals(self):
+    def _add_goals(self):
         return [
             [-1.497, 1.1515],  # Centroid of [[-1.498, 1.553], [-1.496, 0.750]]
             [-1.4945, -0.1005],  # Centroid of [[-1.495, 0.299], [-1.494, -0.500]]
@@ -104,7 +122,82 @@ class SycaBotEnv(gym.Env):
             [1.4955, 0.028],  # Centroid of [[1.494, -0.374], [1.497, 0.430]]
             [0.526, 3.001],  # Centroid of [[0.001, 3.001], [1.051, 3.001]]
         ]
+    
+    def is_out_of_boundary(self, state):
+        x, y, _ = state
+        return not (-1.2 <= x <= 1.2 and -3.5 <= y <= 3.5)
 
+    def step(self, action):
+        v, omega = action
+
+        # omega_r = self.deadzone_response(u_r, self.d_r_minus, self.d_r_plus, self.alpha_r_minus, self.alpha_r_plus)
+        # omega_l = self.deadzone_response(u_l, self.d_l_minus, self.d_l_plus, self.alpha_l_minus, self.alpha_l_plus)
+
+        # v = (self.R / 2) * (omega_r + omega_l)
+        # omega = (self.R / self.L) * (omega_r - omega_l)
+
+        self.last_state = self.state.copy()
+        x, y, theta = self.state
+        x += v * np.cos(theta) * self.dt
+        y += v * np.sin(theta) * self.dt
+        theta += omega * self.dt
+        theta = self.wrap_angle(theta)
+
+        self.state = np.array([x, y, theta])
+
+        min_obs_distance = self._min_distance_to_obstacles()
+        curr_distance = self._distance_to_goals(self.state[:2])
+        last_distance = self._distance_to_goals(self.last_state[:2])
+
+        obs = np.concatenate([self.state, self.last_state, min_obs_distance, curr_distance])
+        self.step_count += 1
+
+        if curr_distance[0] < 0.2:
+            done = True
+            self.step_count = 0
+            self.reward += 1000
+        elif min_obs_distance[0] < 0.1:
+            done = True
+            self.reward = -100  # Negative reward for hitting an obstacle
+        elif self.is_out_of_boundary(self.state):
+            done = True
+            self.reward = -100  # Negative reward for going out of boundary
+        else:
+            done = False
+
+        step_decay = max(0, 1 - 1e-3 * self.step_count)
+        distance_reward = 100 * (last_distance[0] - curr_distance[0]) * step_decay
+        
+            
+        self.reward = distance_reward # - 0.001 * np.abs(omega)  - 0.001 *np.linalg.norm(theta - desired_orientation) 
+
+        return obs, self.reward, done, False, {}
+
+    def reset(self, seed=None, options=None):
+        # super().reset(seed=seed)
+        # Sample a feasible state: not too close to obstacles
+
+        while True:
+            self.state = self.np_random.uniform(low=[-1.0, -3.0, -np.pi], high=[1.0, 3.0, np.pi])
+            min_obs_distance = self._min_distance_to_obstacles()
+            if min_obs_distance[0] > 0.1:
+                break
+
+        self.last_state = self.state.copy()
+        self.step_count = 0
+        self.reward = 0
+        min_obs_distance = self._min_distance_to_obstacles()
+        curr_distance = self._distance_to_goals(self.state[:2])
+
+        obs = np.concatenate([self.state, self.last_state, min_obs_distance, curr_distance])
+        return obs, {}
+
+    def close(self):
+        if self.window is not None:
+            pygame.quit()
+            self.window = None
+            self.clock = None
+    
     def render(self):
         if self.render_mode != "human":
             return
@@ -144,68 +237,6 @@ class SycaBotEnv(gym.Env):
         self.clock.tick(self.metadata["render_fps"])
 
         return (theta + np.pi) % (2 * np.pi) - np.pi
-
-    def step(self, action):
-        v, omega = action
-
-        # omega_r = self.deadzone_response(u_r, self.d_r_minus, self.d_r_plus, self.alpha_r_minus, self.alpha_r_plus)
-        # omega_l = self.deadzone_response(u_l, self.d_l_minus, self.d_l_plus, self.alpha_l_minus, self.alpha_l_plus)
-
-        # v = (self.R / 2) * (omega_r + omega_l)
-        # omega = (self.R / self.L) * (omega_r - omega_l)
-
-        self.last_state = self.state.copy()
-        x, y, theta = self.state
-        x += v * np.cos(theta) * self.dt
-        y += v * np.sin(theta) * self.dt
-        theta += omega * self.dt
-        theta = self.wrap_angle(theta)
-
-        self.state = np.array([x, y, theta])
-
-        min_obs_distance = self.min_distance_to_obstacles()
-        curr_distances = self.distances_to_goals(self.state[:2])
-        last_distances = self.distances_to_goals(self.last_state[:2])
-
-        obs = np.concatenate([self.state, self.last_state, [min_obs_distance], curr_distances])
-        self.step_count += 1
-
-        if any(d < 0.2 for d in curr_distances):
-            done = True
-            self.step_count = 0
-            reward = 1000
-        elif min_obs_distance < 0.1:
-            done = True
-            reward = -100  # Negative reward for hitting an obstacle
-        else:
-            done = False
-
-        if min(last_distances) - min(curr_distances) > 0:
-            step_decay = max(0, 1 - 5e-5 * self.step_count)
-            distance_reward = 50 * (min(last_distances) - min(curr_distances)) * step_decay
-        else:
-            distance_reward = 0
-            
-        reward = distance_reward # - 0.001 * np.abs(omega)  - 0.001 *np.linalg.norm(theta - desired_orientation) 
-
-        return obs, reward, done, False, {}
-
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self.state = self.np_random.uniform(low=[-1.2, -3.5, -np.pi], high=[1.2, 3.5, np.pi])
-        self.last_state = self.state.copy()
-        min_obs_distance = self.min_distance_to_obstacles()
-        curr_distances = self.distances_to_goals(self.state[:2])
-
-
-        obs = np.concatenate([self.state, self.last_state, [min_obs_distance], curr_distances])
-        return obs, {}
-
-    def close(self):
-        if self.window is not None:
-            pygame.quit()
-            self.window = None
-            self.clock = None
 
     def deadzone_response(self, u, d_minus, d_plus, alpha_minus, alpha_plus):
         if u < d_minus:
