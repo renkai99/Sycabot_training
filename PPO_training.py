@@ -1,4 +1,3 @@
-import gymnasium as gym
 from stable_baselines3 import PPO
 from sycabot_env import SycaBotEnv
 import time
@@ -16,7 +15,7 @@ env = SycaBotEnv(render_mode="human")
 # )
 
 # model.learn(
-#     total_timesteps=1e6
+#     total_timesteps=1.5e6
 # )
 
 # # Save model
@@ -29,7 +28,7 @@ model = PPO.load("ppo_sycabot")
 obs, _ = env.reset()
 done = False
 
-for _ in range(200):
+for _ in range(300):
     action, _ = model.predict(obs)
     obs, _, done, _, _ = env.step(action)
     env.render()

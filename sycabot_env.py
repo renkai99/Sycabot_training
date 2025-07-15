@@ -9,7 +9,7 @@ class SycaBotEnv(gym.Env):
     def __init__(self, render_mode=None):
         super().__init__()
         self.render_mode = render_mode
-        self.dt = 0.1  # Time step
+        self.dt = 0.2  # Time step
 
         # Robot parameters
         self.R = 0.032  # wheel radius [m] (wheel_diameter / 2)
@@ -26,7 +26,7 @@ class SycaBotEnv(gym.Env):
                                        high=np.array([0.6, np.pi]), dtype=np.float32)
 
         # # Observation space
-        obs_high = np.array([1.6, 3.5, np.pi, 1.6, 3.5, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi], dtype=np.float32)
+        obs_high = np.array([1.6, 3.5, np.pi, 1.6, 3.5, np.pi, 0.6, 0.6, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=-obs_high, high=obs_high, dtype=np.float32)
 
         # Initial state
@@ -38,6 +38,7 @@ class SycaBotEnv(gym.Env):
         self.goals = self._add_goals()
         self.step_count = 0
         self.reward = 0
+        self.v_prev = 0.0
 
         # Visualization
         self.window = None
@@ -123,7 +124,7 @@ class SycaBotEnv(gym.Env):
             [0.526, 3.001],  # Centroid of [[0.001, 3.001], [1.051, 3.001]]
         ]
     
-    def is_out_of_boundary(self, state):
+    def _is_out_of_boundary(self, state):
         x, y, _ = state
         return not (-1.2 <= x <= 1.2 and -3.5 <= y <= 3.5)
 
@@ -149,7 +150,7 @@ class SycaBotEnv(gym.Env):
         curr_distance = self._distance_to_goals(self.state[:2])
         last_distance = self._distance_to_goals(self.last_state[:2])
 
-        obs = np.concatenate([self.state, self.last_state, min_obs_distance, curr_distance])
+        obs = np.concatenate([self.state, self.last_state, [v, self.v_prev], min_obs_distance, curr_distance])
         self.step_count += 1
 
         if curr_distance[0] < 0.2:
@@ -159,7 +160,7 @@ class SycaBotEnv(gym.Env):
         elif min_obs_distance[0] < 0.1:
             done = True
             self.reward = -100  # Negative reward for hitting an obstacle
-        elif self.is_out_of_boundary(self.state):
+        elif self._is_out_of_boundary(self.state):
             done = True
             self.reward = -100  # Negative reward for going out of boundary
         else:
@@ -167,9 +168,12 @@ class SycaBotEnv(gym.Env):
 
         step_decay = max(0, 1 - 1e-3 * self.step_count)
         distance_reward = 100 * (last_distance[0] - curr_distance[0]) * step_decay
+        input_reward = - 0.005 * np.abs(omega) - 0.02 * np.abs(v - self.v_prev)  # Penalize large inputs
+
+        # orientation_reward = -0.01 * np.abs(theta - curr_distance[1])  # Penalize deviation from goal orientation
         
-            
-        self.reward = distance_reward # - 0.001 * np.abs(omega)  - 0.001 *np.linalg.norm(theta - desired_orientation) 
+        self.reward = distance_reward + input_reward  #  + orientation_reward
+        self.v_prev = v
 
         return obs, self.reward, done, False, {}
 
@@ -180,7 +184,7 @@ class SycaBotEnv(gym.Env):
         while True:
             self.state = self.np_random.uniform(low=[-1.0, -3.0, -np.pi], high=[1.0, 3.0, np.pi])
             min_obs_distance = self._min_distance_to_obstacles()
-            if min_obs_distance[0] > 0.1:
+            if min_obs_distance[0] > 0.2:
                 break
 
         self.last_state = self.state.copy()
@@ -188,8 +192,10 @@ class SycaBotEnv(gym.Env):
         self.reward = 0
         min_obs_distance = self._min_distance_to_obstacles()
         curr_distance = self._distance_to_goals(self.state[:2])
+        v_curr = 0.0
+        self.v_prev = 0.0
 
-        obs = np.concatenate([self.state, self.last_state, min_obs_distance, curr_distance])
+        obs = np.concatenate([self.state, self.last_state, [v_curr, self.v_prev], min_obs_distance, curr_distance])
         return obs, {}
 
     def close(self):
