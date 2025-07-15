@@ -15,7 +15,7 @@ env = SycaBotEnv(render_mode="human")
 # )
 
 # model.learn(
-#     total_timesteps=1.5e6
+#     total_timesteps=2e6
 # )
 
 # # Save model

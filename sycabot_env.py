@@ -1,6 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+print(f"numpy version: {np.__version__}")
 import pygame
 
 class SycaBotEnv(gym.Env):
@@ -25,7 +26,7 @@ class SycaBotEnv(gym.Env):
         self.action_space = spaces.Box(low=np.array([-0.6, -np.pi]), 
                                        high=np.array([0.6, np.pi]), dtype=np.float32)
 
-        # # Observation space
+        # Observation space: # [x, y, theta, last_x, last_y, last_theta, v_curr, v_prev, min_obs_distance_1, min_obs_orientation_1, min_obs_distance_2, min_obs_orientation_2, min_obs_distance_3, min_obs_orientation_3, goal_distance, goal_orientation]
         obs_high = np.array([1.6, 3.5, np.pi, 1.6, 3.5, np.pi, 0.6, 0.6, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi, 3.0, np.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=-obs_high, high=obs_high, dtype=np.float32)
 
