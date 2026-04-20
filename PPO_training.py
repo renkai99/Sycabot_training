@@ -2,7 +2,7 @@ from stable_baselines3 import PPO
 from sycabot_env import SycaBotEnv
 
 # Create environment
-env = SycaBotEnv(render_mode="human")
+env = SycaBotEnv(render_mode=None)
 
 # Train policy
 model = PPO(
