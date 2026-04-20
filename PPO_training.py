@@ -14,7 +14,7 @@ model = PPO(
 )
 
 model.learn(
-    total_timesteps=5e5,
+    total_timesteps=1e5,
     progress_bar=True
 )
 
