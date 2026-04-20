@@ -36,11 +36,6 @@ What this script currently does:
 - Logs TensorBoard data into `./ppo_sycabot_tensorboard/`
 - Saves the trained model as `ppo_sycabot.zip`
 
-Important implementation details:
-
-- The script is currently configured for `total_timesteps=1e5`
-- The device selection falls back to CPU unless your environment object exposes a `device` attribute set to `"cuda"`
-
 ## Testing A Trained Model
 
 Run the evaluation / animation script with:
@@ -73,11 +68,10 @@ If the log directory does not exist yet, run training first so TensorBoard event
 
 ## How To Modify The Setup
 
-Typical places to change behavior:
+Tunable parameters:
 
-- [sycabot_env.py](/home/ryankey/Git repos/Sycabot_training/sycabot_env.py:1): reward function, obstacles, goals, action space, observation space, boundary checks
-- [PPO_training.py](/home/ryankey/Git repos/Sycabot_training/PPO_training.py:1): PPO hyperparameters, total timesteps, logging path, rendering mode
-- [sycabot_test.py](/home/ryankey/Git repos/Sycabot_training/sycabot_test.py:1): rollout length, render speed, checkpoint path
+- **sycabot_env.py**: reward function, obstacles, goals, action space, observation space, boundary checks
+- **PPO_training.py**: PPO hyperparameters, total timesteps, logging path, rendering mode
 
 Examples:
 
@@ -85,4 +79,3 @@ Examples:
 - Tune the reward shaping in `step()`
 - Add or remove obstacles in `_add_obstacles()`
 - Adjust goal positions in `_add_goals()`
-- Slow down or speed up test playback by changing `time.sleep(0.1)`
